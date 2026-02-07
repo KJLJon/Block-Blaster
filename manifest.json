@@ -1,0 +1,19 @@
+{
+  "name": "Block Blaster",
+  "short_name": "BlockBlast",
+  "description": "Puzzle game - place blocks, clear lines, beat your best!",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0f0c29",
+  "theme_color": "#0f0c29",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -17,6 +17,11 @@
         p:'color-purple',o:'color-orange',c:'color-cyan',k:'color-pink',
         i:'color-indigo',t:'color-teal',l:'color-lime'};
 
+    // Collection mode icons & goals
+    var COLLECT_ICONS = ['\u{1F31F}','\u{1F48E}','\u{1F52E}','\u{1F340}','\u{26A1}'];
+    var COLLECT_GOAL = 12;
+    var COLLECT_ICON_CHANCE = 0.2; // chance per piece cell to get an icon
+
     // === Piece Definitions ===
     var PDEFS = [
         {s:[[1]],w:3},{s:[[1,1]],w:4},{s:[[1,1,1]],w:5},{s:[[1,1,1,1]],w:3},{s:[[1,1,1,1,1]],w:1},
@@ -37,7 +42,6 @@
     PDEFS.forEach(function(d,i){ for(var j=0;j<d.w;j++) POOL.push(i); });
 
     // === Adventure Levels ===
-    // Grid: . = empty, lowercase = block, UPPERCASE = target block
     var LEVELS = [
         {name:"First Steps",grid:["........","........","........","........","........","........","rrr..rrr","........"],
          obj:{type:"lines",count:1},stars:[30,60,120]},
@@ -111,7 +115,7 @@
     });
 
     // === State ===
-    var mode = 'classic'; // classic | adventure | blast
+    var mode = 'classic'; // classic | adventure | blast | collect
     var grid = [], pieces = [null,null,null];
     var score = 0, bestScore = 0, streak = 0, gameOver = false;
     var clearAnimating = false, paused = false;
@@ -120,27 +124,33 @@
     var advProgress = {}; // {levelIndex: starsEarned}
     // Blast
     var blastTimer = 0, blastInterval = null;
+    // Collection
+    var collectProgress = {}; // {icon: count}
     // Options
-    var opts = {sfx:true, music:true, vibration:true, flashy:true};
-    // Drag
-    var dragging=false, dragIdx=-1, dragData=null;
-    var dragOffX=0, dragOffY=0, dragEl=null;
-    var lastGR=-1, lastGC=-1, isTouch=false;
-    var boardCellSize=0, boardGap=3, boardPad=6;
-    // Position prediction
+    var opts = {sfx:true, music:true, vibration:true, flashy:true, movement:'smooth'};
+    // Drag state
+    var dragging = false, dragIdx = -1, dragData = null;
+    var dragOffX = 0, dragOffY = 0, dragEl = null;
+    var lastGR = -1, lastGC = -1, isTouch = false;
+    var boardCellSize = 0, boardGap = 3, boardPad = 6;
+    // rAF-based smooth drag
+    var rawInputX = 0, rawInputY = 0;
+    var smoothX = 0, smoothY = 0;
+    var rafId = null;
     var posHistory = [];
 
     // === DOM ===
     var $ = function(id){ return document.getElementById(id); };
-    var boardEl=$('board'), ghostEl=$('ghost-layer'), highlightEl=$('highlight-layer');
-    var particleEl=$('particle-container'), boardWrap=$('board-wrapper');
-    var scoreEl=$('score'), rightValEl=$('right-value'), rightLblEl=$('right-label'), leftLblEl=$('left-label');
-    var modeBadge=$('mode-badge');
-    var objBar=$('objective-bar'), objText=$('objective-text'), objProg=$('objective-progress');
-    var comboDisp=$('combo-display'), comboTxt=$('combo-text');
-    var goOverlay=$('game-over-overlay'), finalScoreEl=$('final-score'), newBestEl=$('new-best');
-    var lcOverlay=$('level-complete-overlay'), lvScoreEl=$('level-score');
-    var pauseOverlay=$('pause-overlay');
+    var boardEl = $('board'), ghostEl = $('ghost-layer'), highlightEl = $('highlight-layer');
+    var particleEl = $('particle-container'), boardWrap = $('board-wrapper');
+    var scoreEl = $('score'), rightValEl = $('right-value'), rightLblEl = $('right-label'), leftLblEl = $('left-label');
+    var modeBadge = $('mode-badge');
+    var objBar = $('objective-bar'), objText = $('objective-text'), objProg = $('objective-progress');
+    var collectionBar = $('collection-bar');
+    var comboDisp = $('combo-display'), comboTxt = $('combo-text');
+    var goOverlay = $('game-over-overlay'), finalScoreEl = $('final-score'), newBestEl = $('new-best');
+    var lcOverlay = $('level-complete-overlay'), lvScoreEl = $('level-score');
+    var pauseOverlay = $('pause-overlay');
 
     // === Screen Navigation ===
     function showScreen(id) {
@@ -159,6 +169,11 @@
         $('opt-music').checked = opts.music;
         $('opt-vibration').checked = opts.vibration;
         $('opt-flashy').checked = opts.flashy;
+        // Set active segment for movement
+        var segBtns = document.querySelectorAll('#opt-movement .seg-btn');
+        for (var i = 0; i < segBtns.length; i++) {
+            segBtns[i].classList.toggle('active', segBtns[i].dataset.val === opts.movement);
+        }
         applyOptions();
     }
     function saveOptions() {
@@ -207,7 +222,7 @@
             btn.dataset.level = i;
             var stars = advProgress[i] || 0;
             var starStr = '';
-            for (var s = 0; s < 3; s++) starStr += s < stars ? '★' : '☆';
+            for (var s = 0; s < 3; s++) starStr += s < stars ? '\u2605' : '\u2606';
             btn.innerHTML = '<span>' + (i+1) + '</span><span class="level-stars-small">' + starStr + '</span>';
             if (!unlocked) btn.disabled = true;
             btn.addEventListener('click', onLevelClick);
@@ -231,10 +246,10 @@
                 cell.className = 'cell'; cell.dataset.row = r; cell.dataset.col = c;
                 boardEl.appendChild(cell);
                 var gc = document.createElement('div');
-                gc.className = 'cell ghost-cell-empty'; gc.dataset.row = r; gc.dataset.col = c;
+                gc.className = 'cell'; gc.dataset.row = r; gc.dataset.col = c;
                 ghostEl.appendChild(gc);
                 var hc = document.createElement('div');
-                hc.className = 'cell ghost-cell-empty'; hc.dataset.row = r; hc.dataset.col = c;
+                hc.className = 'cell'; hc.dataset.row = r; hc.dataset.col = c;
                 highlightEl.appendChild(hc);
             }
         }
@@ -253,6 +268,7 @@
         pieces = [null,null,null];
         score = 0; streak = 0; gameOver = false; clearAnimating = false; paused = false;
         posHistory = [];
+        collectProgress = {};
 
         goOverlay.classList.add('hidden');
         lcOverlay.classList.add('hidden');
@@ -266,12 +282,14 @@
             rightLblEl.textContent = 'BEST';
             rightValEl.textContent = bestScore;
             objBar.classList.add('hidden');
+            collectionBar.classList.add('hidden');
         } else if (mode === 'adventure') {
             var lv = LEVELS[advLevel];
             modeBadge.textContent = 'LV ' + (advLevel+1);
             leftLblEl.textContent = 'SCORE';
             rightLblEl.textContent = 'GOAL';
             objBar.classList.remove('hidden');
+            collectionBar.classList.add('hidden');
             loadLevelGrid(lv);
             if (lv.obj.type === 'targets') {
                 advTargetsLeft = lv.obj.count;
@@ -292,7 +310,15 @@
             rightValEl.textContent = blastTimer;
             rightValEl.classList.remove('timer-urgent');
             objBar.classList.add('hidden');
+            collectionBar.classList.add('hidden');
             startBlastTimer();
+        } else if (mode === 'collect') {
+            modeBadge.textContent = 'COLLECT';
+            leftLblEl.textContent = 'SCORE';
+            rightLblEl.textContent = 'LEFT';
+            objBar.classList.add('hidden');
+            collectionBar.classList.remove('hidden');
+            initCollectionMode();
         }
 
         scoreEl.textContent = '0';
@@ -315,6 +341,63 @@
                 grid[r][c] = { color: color, target: isTarget };
             }
         }
+    }
+
+    // === Collection Mode ===
+    function initCollectionMode() {
+        // Reset collect progress
+        for (var i = 0; i < COLLECT_ICONS.length; i++) collectProgress[COLLECT_ICONS[i]] = 0;
+        updateCollectionBar();
+        updateCollectRemaining();
+
+        // Place 10-14 scattered blocks in top 6 rows with ~35% having icons
+        var blockCount = 10 + Math.floor(Math.random() * 5);
+        var placed = 0;
+        var attempts = 0;
+        while (placed < blockCount && attempts < 200) {
+            var r = Math.floor(Math.random() * 6);
+            var c = Math.floor(Math.random() * GRID);
+            if (grid[r][c] === null) {
+                var color = COLORS[Math.floor(Math.random() * COLORS.length)];
+                var icon = null;
+                if (Math.random() < 0.35) {
+                    icon = COLLECT_ICONS[Math.floor(Math.random() * COLLECT_ICONS.length)];
+                }
+                grid[r][c] = { color: color, icon: icon };
+                placed++;
+            }
+            attempts++;
+        }
+    }
+
+    function updateCollectionBar() {
+        collectionBar.innerHTML = '';
+        for (var i = 0; i < COLLECT_ICONS.length; i++) {
+            var icon = COLLECT_ICONS[i];
+            var count = collectProgress[icon] || 0;
+            var done = count >= COLLECT_GOAL;
+            var item = document.createElement('div');
+            item.className = 'collect-item' + (done ? ' ci-done' : '');
+            item.innerHTML = '<span class="ci-icon">' + icon + '</span><span class="ci-count">' +
+                Math.min(count, COLLECT_GOAL) + '/' + COLLECT_GOAL + '</span>';
+            collectionBar.appendChild(item);
+        }
+    }
+
+    function updateCollectRemaining() {
+        var total = 0;
+        for (var i = 0; i < COLLECT_ICONS.length; i++) {
+            var left = COLLECT_GOAL - (collectProgress[COLLECT_ICONS[i]] || 0);
+            if (left > 0) total += left;
+        }
+        rightValEl.textContent = total;
+    }
+
+    function checkCollectComplete() {
+        for (var i = 0; i < COLLECT_ICONS.length; i++) {
+            if ((collectProgress[COLLECT_ICONS[i]] || 0) < COLLECT_GOAL) return false;
+        }
+        return true;
     }
 
     // === Blast Timer ===
@@ -341,11 +424,22 @@
         for (var i = 0; i < cells.length; i++) {
             var r = parseInt(cells[i].dataset.row), c = parseInt(cells[i].dataset.col);
             cells[i].className = 'cell';
+            // Remove any icon children
+            var existingIcon = cells[i].querySelector('.cell-icon');
+            if (existingIcon) cells[i].removeChild(existingIcon);
+
             var v = grid[r][c];
             if (v) {
                 var color = typeof v === 'string' ? v : v.color;
                 cells[i].classList.add('filled', color);
                 if (typeof v === 'object' && v.target) cells[i].classList.add('target-block');
+                // Render icon for collection mode
+                if (typeof v === 'object' && v.icon) {
+                    var iconEl = document.createElement('span');
+                    iconEl.className = 'cell-icon';
+                    iconEl.textContent = v.icon;
+                    cells[i].appendChild(iconEl);
+                }
             }
         }
     }
@@ -364,7 +458,19 @@
                 for (var cc = 0; cc < cols; cc++) {
                     var cell = document.createElement('div');
                     cell.className = 'piece-cell';
-                    cell.classList.add(p.shape[rr][cc] ? p.color : 'empty');
+                    if (p.shape[rr][cc]) {
+                        cell.classList.add(p.color);
+                        cell.style.position = 'relative';
+                        // Show icon on piece cells in collection mode
+                        if (p.icons && p.icons[rr] && p.icons[rr][cc]) {
+                            var iconEl = document.createElement('span');
+                            iconEl.className = 'piece-icon';
+                            iconEl.textContent = p.icons[rr][cc];
+                            cell.appendChild(iconEl);
+                        }
+                    } else {
+                        cell.classList.add('empty');
+                    }
                     pv.appendChild(cell);
                 }
             }
@@ -386,7 +492,40 @@
         var idx = POOL[Math.floor(Math.random()*POOL.length)];
         var shape = PDEFS[idx].s.map(function(r){return r.slice();});
         var color = COLORS[Math.floor(Math.random()*COLORS.length)];
-        return {shape:shape, color:color};
+        var piece = {shape:shape, color:color};
+
+        // In collection mode, randomly assign icons to some cells
+        if (mode === 'collect') {
+            var icons = [];
+            var hasIcon = false;
+            for (var r = 0; r < shape.length; r++) {
+                icons[r] = [];
+                for (var c = 0; c < shape[r].length; c++) {
+                    if (shape[r][c] && Math.random() < COLLECT_ICON_CHANCE) {
+                        icons[r][c] = COLLECT_ICONS[Math.floor(Math.random() * COLLECT_ICONS.length)];
+                        hasIcon = true;
+                    } else {
+                        icons[r][c] = null;
+                    }
+                }
+            }
+            // Make sure at least one cell has an icon sometimes
+            if (!hasIcon && Math.random() < 0.4) {
+                // Find a filled cell and assign an icon
+                for (var rr = 0; rr < shape.length; rr++) {
+                    for (var cc = 0; cc < shape[rr].length; cc++) {
+                        if (shape[rr][cc]) {
+                            icons[rr][cc] = COLLECT_ICONS[Math.floor(Math.random() * COLLECT_ICONS.length)];
+                            break;
+                        }
+                    }
+                    if (icons[rr] && icons[rr].some(function(v){return v;})) break;
+                }
+            }
+            piece.icons = icons;
+        }
+
+        return piece;
     }
 
     function dealNewPieces() {
@@ -404,7 +543,43 @@
         return {rect:br, cw:cw, step:st};
     }
 
-    // === Drag & Drop (with faster-than-finger prediction) ===
+    // === rAF-based Smooth Drag System ===
+    function dragRAFLoop() {
+        if (!dragging) return;
+
+        var lerpFactor;
+        var px, py;
+
+        if (opts.movement === 'precise') {
+            // Direct 1:1 movement with dead zone for micro-jitter
+            px = rawInputX;
+            py = rawInputY;
+            smoothX = px;
+            smoothY = py;
+        } else if (opts.movement === 'accelerated') {
+            // Velocity prediction + lerp
+            var pred = getPredicted(rawInputX, rawInputY);
+            lerpFactor = 0.45;
+            smoothX += (pred.x - smoothX) * lerpFactor;
+            smoothY += (pred.y - smoothY) * lerpFactor;
+            px = smoothX;
+            py = smoothY;
+        } else {
+            // Smooth (default) - gentle lerp
+            lerpFactor = 0.3;
+            smoothX += (rawInputX - smoothX) * lerpFactor;
+            smoothY += (rawInputY - smoothY) * lerpFactor;
+            px = smoothX;
+            py = smoothY;
+        }
+
+        moveDrag(px, py);
+        updateGhost(px, py);
+
+        rafId = requestAnimationFrame(dragRAFLoop);
+    }
+
+    // === Drag & Drop ===
     function onDragStart(e) {
         if (gameOver || clearAnimating || paused) return;
         e.preventDefault();
@@ -430,7 +605,19 @@
                 var cell = document.createElement('div');
                 cell.className = 'piece-cell';
                 cell.style.width = cs+'px'; cell.style.height = cs+'px';
-                cell.classList.add(dragData.shape[r][c] ? dragData.color : 'empty');
+                if (dragData.shape[r][c]) {
+                    cell.classList.add(dragData.color);
+                    // Show icons on drag piece for collection mode
+                    if (dragData.icons && dragData.icons[r] && dragData.icons[r][c]) {
+                        cell.style.position = 'relative';
+                        var iconEl = document.createElement('span');
+                        iconEl.className = 'cell-icon';
+                        iconEl.textContent = dragData.icons[r][c];
+                        cell.appendChild(iconEl);
+                    }
+                } else {
+                    cell.classList.add('empty');
+                }
                 dragEl.appendChild(cell);
             }
         }
@@ -439,14 +626,23 @@
         var pw = cols*(cs+boardGap)-boardGap;
         var ph = rows*(cs+boardGap)-boardGap;
         dragOffX = pw/2;
-        // Larger offset on touch so piece is well above thumb for one-handed play
         dragOffY = isTouch ? ph + 90 : ph/2;
 
         var cx = e.touches ? e.touches[0].clientX : e.clientX;
         var cy = e.touches ? e.touches[0].clientY : e.clientY;
+
+        // Initialize smooth position to initial raw position
+        rawInputX = cx;
+        rawInputY = cy;
+        smoothX = cx;
+        smoothY = cy;
         trackPos(cx, cy);
         moveDrag(cx, cy);
         updateGhost(cx, cy);
+
+        // Start rAF loop
+        if (rafId) cancelAnimationFrame(rafId);
+        rafId = requestAnimationFrame(dragRAFLoop);
 
         document.addEventListener('mousemove', onDragMove);
         document.addEventListener('mouseup', onDragEnd);
@@ -478,9 +674,9 @@
         var cx = e.touches ? e.touches[0].clientX : e.clientX;
         var cy = e.touches ? e.touches[0].clientY : e.clientY;
         trackPos(cx, cy);
-        var pred = isTouch ? getPredicted(cx, cy) : {x:cx, y:cy};
-        moveDrag(pred.x, pred.y);
-        updateGhost(pred.x, pred.y);
+        // Just store raw input; rAF loop handles interpolation and rendering
+        rawInputX = cx;
+        rawInputY = cy;
     }
 
     function moveDrag(cx, cy) {
@@ -494,8 +690,15 @@
         e.preventDefault();
         var cx = e.changedTouches ? e.changedTouches[0].clientX : e.clientX;
         var cy = e.changedTouches ? e.changedTouches[0].clientY : e.clientY;
-        var pred = isTouch ? getPredicted(cx, cy) : {x:cx, y:cy};
-        var pos = gridPos(pred.x, pred.y);
+        // Use the final smoothed position for placement
+        var finalX = smoothX, finalY = smoothY;
+        // But if the raw and smooth are very close, use raw for precision
+        var dx = cx - smoothX, dy = cy - smoothY;
+        if (Math.sqrt(dx*dx + dy*dy) < 20) {
+            finalX = cx;
+            finalY = cy;
+        }
+        var pos = gridPos(finalX, finalY);
         if (pos && canPlace(dragData.shape, pos.r, pos.c)) {
             placePiece(dragIdx, pos.r, pos.c);
         }
@@ -504,12 +707,13 @@
     function onDragCancel() { cleanupDrag(); }
 
     function cleanupDrag() {
+        if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
         if (dragEl && dragEl.parentNode) dragEl.parentNode.removeChild(dragEl);
         dragEl = null;
         var dvs = document.querySelectorAll('.piece-preview.dragging');
         for (var i=0;i<dvs.length;i++) dvs[i].classList.remove('dragging');
         clearGhost(); clearHighlight();
-        dragging=false; dragIdx=-1; dragData=null; lastGR=-1; lastGC=-1;
+        dragging = false; dragIdx = -1; dragData = null; lastGR = -1; lastGC = -1;
         document.removeEventListener('mousemove', onDragMove);
         document.removeEventListener('mouseup', onDragEnd);
         document.removeEventListener('touchmove', onDragMove);
@@ -547,8 +751,11 @@
                 var gr=pos.r+r, gc_=pos.c+c;
                 if(gr<0||gr>=GRID||gc_<0||gc_>=GRID) continue;
                 var cell=gcells[gr*GRID+gc_];
-                if(valid){ cell.classList.add('ghost',dragData.color); cell.style.removeProperty('background'); }
-                else { cell.classList.add('ghost-invalid'); cell.style.removeProperty('background'); }
+                if(valid){
+                    cell.classList.add('ghost', dragData.color);
+                } else {
+                    cell.classList.add('ghost-invalid');
+                }
             }
         }
 
@@ -565,35 +772,35 @@
             }
         }
         var hcells = highlightEl.querySelectorAll('.cell');
-        // Check rows
         for(var rr=0;rr<GRID;rr++){
             if(sim[rr].every(function(v){return v!==null;})){
                 for(var cc=0;cc<GRID;cc++){
                     hcells[rr*GRID+cc].classList.add('line-highlight');
-                    hcells[rr*GRID+cc].style.removeProperty('background');
                 }
             }
         }
-        // Check cols
         for(var cc2=0;cc2<GRID;cc2++){
             var full=true;
             for(var rr2=0;rr2<GRID;rr2++) if(sim[rr2][cc2]===null){full=false;break;}
             if(full){
                 for(var rr3=0;rr3<GRID;rr3++){
                     hcells[rr3*GRID+cc2].classList.add('line-highlight');
-                    hcells[rr3*GRID+cc2].style.removeProperty('background');
                 }
             }
         }
     }
 
     function clearGhost() {
-        var cells=ghostEl.querySelectorAll('.cell');
-        for(var i=0;i<cells.length;i++){ cells[i].className='cell ghost-cell-empty'; cells[i].style.background='transparent'; }
+        var cells = ghostEl.querySelectorAll('.cell');
+        for (var i = 0; i < cells.length; i++) {
+            cells[i].className = 'cell';
+        }
     }
     function clearHighlight() {
-        var cells=highlightEl.querySelectorAll('.cell');
-        for(var i=0;i<cells.length;i++){ cells[i].className='cell ghost-cell-empty'; cells[i].style.background='transparent'; }
+        var cells = highlightEl.querySelectorAll('.cell');
+        for (var i = 0; i < cells.length; i++) {
+            cells[i].className = 'cell';
+        }
     }
 
     // === Placement ===
@@ -621,7 +828,12 @@
         var shape=p.shape, blocks=0;
         for(var r=0;r<shape.length;r++) for(var c=0;c<shape[r].length;c++){
             if(!shape[r][c]) continue;
-            grid[row+r][col+c] = p.color;
+            if (mode === 'collect') {
+                var icon = (p.icons && p.icons[r] && p.icons[r][c]) ? p.icons[r][c] : null;
+                grid[row+r][col+c] = { color: p.color, icon: icon };
+            } else {
+                grid[row+r][col+c] = p.color;
+            }
             blocks++;
         }
         score += blocks * PTS_BLOCK;
@@ -654,6 +866,11 @@
             }
             // Adventure: update progress
             if(mode==='adventure') updateAdvProgress(linesCleared);
+            // Collection: update progress
+            if(mode==='collect') {
+                updateCollectionBar();
+                updateCollectRemaining();
+            }
         } else {
             streak = 0;
         }
@@ -663,6 +880,13 @@
         if(mode==='adventure' && checkAdvComplete()){
             var delay = linesCleared>0?700:300;
             setTimeout(function(){ completeLevel(); }, delay);
+            return;
+        }
+
+        // Check collection completion
+        if(mode==='collect' && checkCollectComplete()){
+            var delay2 = linesCleared>0?700:300;
+            setTimeout(function(){ completeCollection(); }, delay2);
             return;
         }
 
@@ -709,11 +933,19 @@
         rowsC.forEach(function(r){ for(var c=0;c<GRID;c++) toClear.add(r*GRID+c); });
         colsC.forEach(function(c){ for(var r=0;r<GRID;r++) toClear.add(r*GRID+c); });
 
-        // Track targets cleared for adventure
+        // Track targets and icons cleared
         var targetsCleared = 0;
         toClear.forEach(function(idx){
             var r=Math.floor(idx/GRID), c=idx%GRID;
-            if(typeof grid[r][c]==='object' && grid[r][c] && grid[r][c].target) targetsCleared++;
+            var v = grid[r][c];
+            if(typeof v==='object' && v) {
+                if(v.target) targetsCleared++;
+                // Collection mode: collect icons
+                if(v.icon && mode === 'collect') {
+                    collectProgress[v.icon] = (collectProgress[v.icon] || 0) + 1;
+                    AudioManager.sfx.collect();
+                }
+            }
             grid[r][c]=null;
         });
         if(mode==='adventure' && LEVELS[advLevel].obj.type==='targets') advTargetsLeft -= targetsCleared;
@@ -765,13 +997,14 @@
         for(var i=0;i<3;i++) if(score>=lv.stars[i]) stars=i+1;
         var prev = advProgress[advLevel]||0;
         if(stars>prev) advProgress[advLevel]=stars;
-        else if(prev===0) advProgress[advLevel]=1; // at least 1 star for completing
+        else if(prev===0) advProgress[advLevel]=1;
         saveProgress();
 
         lvScoreEl.textContent = score;
+        $('level-complete-title').textContent = 'LEVEL COMPLETE!';
         for(var s=1;s<=3;s++){
             var el = $('star-'+s);
-            el.textContent = s<=stars ? '★' : '☆';
+            el.textContent = s<=stars ? '\u2605' : '\u2606';
             el.className = 'star' + (s<=stars?' earned':'');
             if(s<=stars) el.style.animationDelay = (s*0.2)+'s';
             if(s<=stars) AudioManager.sfx.star(s*0.3);
@@ -779,6 +1012,30 @@
 
         var nextBtn = $('btn-next-level');
         nextBtn.style.display = advLevel < LEVELS.length-1 ? '' : 'none';
+        lcOverlay.classList.remove('hidden');
+    }
+
+    // === Collection Complete ===
+    function completeCollection(){
+        gameOver = true;
+        AudioManager.sfx.levelComplete();
+        saveBest();
+
+        lvScoreEl.textContent = score;
+        $('level-complete-title').textContent = 'COLLECTION COMPLETE!';
+        // Award stars based on score
+        var stars = 1;
+        if (score >= 200) stars = 2;
+        if (score >= 400) stars = 3;
+        for(var s=1;s<=3;s++){
+            var el = $('star-'+s);
+            el.textContent = s<=stars ? '\u2605' : '\u2606';
+            el.className = 'star' + (s<=stars?' earned':'');
+            if(s<=stars) el.style.animationDelay = (s*0.2)+'s';
+            if(s<=stars) AudioManager.sfx.star(s*0.3);
+        }
+
+        $('btn-next-level').style.display = 'none';
         lcOverlay.classList.remove('hidden');
     }
 
@@ -806,11 +1063,10 @@
             particleEl.appendChild(p);
             (function(el){setTimeout(function(){if(el.parentNode)el.parentNode.removeChild(el);},1200);})(p);
         }
-        // Sparkle emoji
         if(Math.random()<0.4){
             var sp=document.createElement('div');
             sp.className='sparkle';
-            sp.textContent='✨';
+            sp.textContent='\u2728';
             sp.style.left=cx+'px'; sp.style.top=cy+'px';
             sp.style.setProperty('--tx',(Math.random()-0.5)*40+'px');
             sp.style.setProperty('--ty',-(20+Math.random()*30)+'px');
@@ -887,6 +1143,7 @@
         $('btn-classic').addEventListener('click',function(){ AudioManager.sfx.click(); startGame('classic'); });
         $('btn-adventure').addEventListener('click',function(){ AudioManager.sfx.click(); buildLevelGrid(); showScreen('level-select'); });
         $('btn-blast').addEventListener('click',function(){ AudioManager.sfx.click(); startGame('blast'); });
+        $('btn-collect').addEventListener('click',function(){ AudioManager.sfx.click(); startGame('collect'); });
         $('btn-options-open').addEventListener('click',function(){ AudioManager.sfx.click(); showScreen('options-screen'); });
 
         // Back buttons
@@ -915,6 +1172,21 @@
         ['opt-sfx','opt-music','opt-vibration','opt-flashy'].forEach(function(id){
             $(id).addEventListener('change', saveOptions);
         });
+
+        // Movement segmented control
+        var segBtns = document.querySelectorAll('#opt-movement .seg-btn');
+        for (var i = 0; i < segBtns.length; i++) {
+            segBtns[i].addEventListener('click', function(e) {
+                var val = e.currentTarget.dataset.val;
+                opts.movement = val;
+                var btns = document.querySelectorAll('#opt-movement .seg-btn');
+                for (var j = 0; j < btns.length; j++) {
+                    btns[j].classList.toggle('active', btns[j].dataset.val === val);
+                }
+                localStorage.setItem('bbOpts', JSON.stringify(opts));
+                AudioManager.sfx.click();
+            });
+        }
 
         window.addEventListener('resize', updateBoardMetrics);
 
