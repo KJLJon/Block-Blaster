@@ -9,188 +9,150 @@ var AudioManager = (function () {
     var musicEnabled = true;
     var musicGain = null;
     var musicPlaying = false;
-    var musicInterval = null;
+    var musicTimeout = null;
 
     function getCtx() {
         if (!ctx) {
-            try {
-                ctx = new (window.AudioContext || window.webkitAudioContext)();
-            } catch (e) { return null; }
+            try { ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return null; }
         }
         if (ctx.state === 'suspended') ctx.resume();
         return ctx;
     }
 
-    function playTone(freq, type, duration, startTime, gainVal, rampTo) {
+    function tone(freq, type, dur, start, vol, rampTo) {
         var c = getCtx(); if (!c) return;
-        var osc = c.createOscillator();
-        var gain = c.createGain();
-        osc.type = type || 'sine';
-        osc.frequency.setValueAtTime(freq, startTime || c.currentTime);
-        if (rampTo) osc.frequency.linearRampToValueAtTime(rampTo, (startTime || c.currentTime) + duration);
-        gain.gain.setValueAtTime(gainVal || 0.15, startTime || c.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.001, (startTime || c.currentTime) + duration);
-        osc.connect(gain);
-        gain.connect(c.destination);
-        osc.start(startTime || c.currentTime);
-        osc.stop((startTime || c.currentTime) + duration);
+        var t = start || c.currentTime;
+        var o = c.createOscillator();
+        var g = c.createGain();
+        o.type = type || 'sine';
+        o.frequency.setValueAtTime(freq, t);
+        if (rampTo) o.frequency.linearRampToValueAtTime(rampTo, t + dur);
+        g.gain.setValueAtTime(vol || 0.15, t);
+        g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+        o.connect(g); g.connect(c.destination);
+        o.start(t); o.stop(t + dur);
     }
 
-    function playNoise(duration, startTime, gainVal) {
+    function noise(dur, start, vol) {
         var c = getCtx(); if (!c) return;
-        var bufferSize = c.sampleRate * duration;
-        var buffer = c.createBuffer(1, bufferSize, c.sampleRate);
-        var data = buffer.getChannelData(0);
-        for (var i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
-        var src = c.createBufferSource();
-        src.buffer = buffer;
-        var gain = c.createGain();
-        gain.gain.setValueAtTime(gainVal || 0.08, startTime || c.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.001, (startTime || c.currentTime) + duration);
-        src.connect(gain); gain.connect(c.destination);
-        src.start(startTime || c.currentTime);
+        var t = start || c.currentTime;
+        var sz = Math.max(1, Math.floor(c.sampleRate * dur));
+        var buf = c.createBuffer(1, sz, c.sampleRate);
+        var d = buf.getChannelData(0);
+        for (var i = 0; i < sz; i++) d[i] = Math.random() * 2 - 1;
+        var s = c.createBufferSource(); s.buffer = buf;
+        var g = c.createGain();
+        g.gain.setValueAtTime(vol || 0.08, t);
+        g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+        s.connect(g); g.connect(c.destination);
+        s.start(t);
     }
 
     var sfx = {
         click: function () {
             if (!sfxEnabled) return;
-            playTone(1200, 'square', 0.05, null, 0.06);
+            tone(1200, 'square', 0.05, null, 0.06);
         },
         pickup: function () {
             if (!sfxEnabled) return;
             var c = getCtx(); if (!c) return;
-            playTone(600, 'sine', 0.08, c.currentTime, 0.12, 900);
+            tone(600, 'sine', 0.08, c.currentTime, 0.12, 900);
         },
         place: function () {
             if (!sfxEnabled) return;
             var c = getCtx(); if (!c) return;
-            playTone(180, 'sine', 0.12, c.currentTime, 0.15);
-            playNoise(0.06, c.currentTime, 0.1);
+            tone(180, 'sine', 0.12, c.currentTime, 0.15);
+            noise(0.06, c.currentTime, 0.1);
         },
-        clear: function (lineCount) {
+        clear: function (n) {
             if (!sfxEnabled) return;
             var c = getCtx(); if (!c) return;
-            // Ascending pentatonic arpeggio
-            var notes = [523, 659, 784, 1047]; // C5 E5 G5 C6
-            var count = Math.min(lineCount || 1, 4);
-            for (var i = 0; i < count + 1; i++) {
-                playTone(notes[Math.min(i, notes.length - 1)], 'sine', 0.25, c.currentTime + i * 0.08, 0.12);
-                playTone(notes[Math.min(i, notes.length - 1)] * 1.5, 'triangle', 0.2, c.currentTime + i * 0.08, 0.05);
+            var notes = [523, 659, 784, 1047];
+            for (var i = 0; i < Math.min((n || 1) + 1, 5); i++) {
+                tone(notes[Math.min(i, 3)], 'sine', 0.25, c.currentTime + i * 0.08, 0.12);
+                tone(notes[Math.min(i, 3)] * 1.5, 'triangle', 0.2, c.currentTime + i * 0.08, 0.05);
             }
         },
         combo: function () {
             if (!sfxEnabled) return;
             var c = getCtx(); if (!c) return;
-            var notes = [523, 659, 784, 1047, 1319]; // C5 E5 G5 C6 E6
-            for (var i = 0; i < 5; i++) {
-                playTone(notes[i], 'square', 0.15, c.currentTime + i * 0.05, 0.08);
-            }
+            var n = [523, 659, 784, 1047, 1319];
+            for (var i = 0; i < 5; i++) tone(n[i], 'square', 0.15, c.currentTime + i * 0.05, 0.08);
+        },
+        collect: function () {
+            if (!sfxEnabled) return;
+            var c = getCtx(); if (!c) return;
+            tone(880, 'sine', 0.15, c.currentTime, 0.1, 1320);
+            tone(1320, 'triangle', 0.1, c.currentTime + 0.08, 0.06);
         },
         gameOver: function () {
             if (!sfxEnabled) return;
             var c = getCtx(); if (!c) return;
-            playTone(440, 'sawtooth', 0.3, c.currentTime, 0.1, 220);
-            playTone(330, 'sawtooth', 0.4, c.currentTime + 0.2, 0.08, 165);
-            playTone(220, 'sawtooth', 0.5, c.currentTime + 0.5, 0.06, 110);
+            tone(440, 'sawtooth', 0.3, c.currentTime, 0.1, 220);
+            tone(330, 'sawtooth', 0.4, c.currentTime + 0.2, 0.08, 165);
+            tone(220, 'sawtooth', 0.5, c.currentTime + 0.5, 0.06, 110);
         },
         levelComplete: function () {
             if (!sfxEnabled) return;
             var c = getCtx(); if (!c) return;
-            var notes = [523, 659, 784, 1047, 784, 1047, 1319];
-            for (var i = 0; i < notes.length; i++) {
-                playTone(notes[i], 'square', 0.18, c.currentTime + i * 0.1, 0.1);
-                playTone(notes[i] * 0.5, 'triangle', 0.18, c.currentTime + i * 0.1, 0.06);
+            var n = [523, 659, 784, 1047, 784, 1047, 1319];
+            for (var i = 0; i < n.length; i++) {
+                tone(n[i], 'square', 0.18, c.currentTime + i * 0.1, 0.1);
+                tone(n[i] * 0.5, 'triangle', 0.18, c.currentTime + i * 0.1, 0.06);
             }
         },
         star: function (delay) {
             if (!sfxEnabled) return;
             var c = getCtx(); if (!c) return;
-            playTone(1200, 'sine', 0.3, c.currentTime + (delay || 0), 0.08, 1800);
-            playTone(1800, 'triangle', 0.2, c.currentTime + (delay || 0) + 0.05, 0.05);
+            tone(1200, 'sine', 0.3, c.currentTime + (delay || 0), 0.08, 1800);
         }
     };
 
-    // === Background Music - Simple chiptune loop ===
+    // === Background Music ===
     var melody = [
-        // [note freq, duration in 16ths]
-        [523, 2], [659, 2], [784, 2], [659, 2], // C E G E
-        [880, 2], [784, 2], [659, 2], [523, 2], // A G E C
-        [587, 2], [659, 2], [784, 2], [880, 2], // D E G A
-        [784, 2], [659, 2], [587, 2], [523, 2], // G E D C
-        [523, 2], [784, 2], [880, 2], [784, 2], // C G A G
-        [659, 2], [523, 2], [587, 2], [659, 2], // E C D E
-        [784, 2], [880, 2], [1047, 4],            // G A C(high)
-        [880, 2], [784, 2],                       // A G
+        [523,2],[659,2],[784,2],[659,2],[880,2],[784,2],[659,2],[523,2],
+        [587,2],[659,2],[784,2],[880,2],[784,2],[659,2],[587,2],[523,2],
+        [523,2],[784,2],[880,2],[784,2],[659,2],[523,2],[587,2],[659,2],
+        [784,2],[880,2],[1047,4],[880,2],[784,2]
     ];
     var bass = [
-        [262, 8], [220, 8], // C3 A2
-        [294, 8], [262, 8], // D3 C3
-        [262, 8], [220, 8], // C3 A2
-        [294, 4], [262, 4], [220, 4], [196, 4], // D3 C3 A2 G2
+        [262,8],[220,8],[294,8],[262,8],[262,8],[220,8],[294,4],[262,4],[220,4],[196,4]
     ];
 
     function startMusic() {
         if (musicPlaying || !musicEnabled) return;
         var c = getCtx(); if (!c) return;
         musicPlaying = true;
-
-        if (!musicGain) {
-            musicGain = c.createGain();
-            musicGain.connect(c.destination);
-        }
+        if (!musicGain) { musicGain = c.createGain(); musicGain.connect(c.destination); }
         musicGain.gain.setValueAtTime(0.04, c.currentTime);
-
         scheduleLoop();
     }
 
     function scheduleLoop() {
         if (!musicPlaying || !musicEnabled) return;
         var c = getCtx(); if (!c) return;
-        var bpm = 140;
-        var sixteenth = 60 / bpm / 4;
-        var t = c.currentTime + 0.05;
-        var totalDuration = 0;
-
-        // Melody
+        var bpm = 140, six = 60 / bpm / 4, t = c.currentTime + 0.05, dur = 0;
         var mt = t;
         for (var i = 0; i < melody.length; i++) {
-            var dur = melody[i][1] * sixteenth;
-            var osc = c.createOscillator();
-            osc.type = 'square';
-            osc.frequency.setValueAtTime(melody[i][0], mt);
-            var g = c.createGain();
-            g.gain.setValueAtTime(0.04, mt);
-            g.gain.exponentialRampToValueAtTime(0.001, mt + dur * 0.9);
-            osc.connect(g); g.connect(musicGain);
-            osc.start(mt); osc.stop(mt + dur);
-            mt += dur;
+            var d = melody[i][1] * six;
+            var o = c.createOscillator(); o.type = 'square'; o.frequency.setValueAtTime(melody[i][0], mt);
+            var g = c.createGain(); g.gain.setValueAtTime(0.04, mt); g.gain.exponentialRampToValueAtTime(0.001, mt + d * 0.9);
+            o.connect(g); g.connect(musicGain); o.start(mt); o.stop(mt + d); mt += d;
         }
-        totalDuration = mt - t;
-
-        // Bass
+        dur = mt - t;
         var bt = t;
         for (var j = 0; j < bass.length; j++) {
-            var bdur = bass[j][1] * sixteenth;
-            var bosc = c.createOscillator();
-            bosc.type = 'triangle';
-            bosc.frequency.setValueAtTime(bass[j][0], bt);
-            var bg = c.createGain();
-            bg.gain.setValueAtTime(0.05, bt);
-            bg.gain.exponentialRampToValueAtTime(0.001, bt + bdur * 0.8);
-            bosc.connect(bg); bg.connect(musicGain);
-            bosc.start(bt); bosc.stop(bt + bdur);
-            bt += bdur;
+            var bd = bass[j][1] * six;
+            var bo = c.createOscillator(); bo.type = 'triangle'; bo.frequency.setValueAtTime(bass[j][0], bt);
+            var bg = c.createGain(); bg.gain.setValueAtTime(0.05, bt); bg.gain.exponentialRampToValueAtTime(0.001, bt + bd * 0.8);
+            bo.connect(bg); bg.connect(musicGain); bo.start(bt); bo.stop(bt + bd); bt += bd;
         }
-
-        // Schedule next loop
-        musicInterval = setTimeout(function () {
-            if (musicPlaying && musicEnabled) scheduleLoop();
-        }, totalDuration * 1000 - 100);
+        musicTimeout = setTimeout(function () { if (musicPlaying && musicEnabled) scheduleLoop(); }, dur * 1000 - 100);
     }
 
     function stopMusic() {
         musicPlaying = false;
-        if (musicInterval) { clearTimeout(musicInterval); musicInterval = null; }
+        if (musicTimeout) { clearTimeout(musicTimeout); musicTimeout = null; }
     }
 
     return {
@@ -198,12 +160,7 @@ var AudioManager = (function () {
         startMusic: startMusic,
         stopMusic: stopMusic,
         setSfxEnabled: function (v) { sfxEnabled = v; },
-        setMusicEnabled: function (v) {
-            musicEnabled = v;
-            if (!v) stopMusic(); else startMusic();
-        },
-        getSfxEnabled: function () { return sfxEnabled; },
-        getMusicEnabled: function () { return musicEnabled; },
+        setMusicEnabled: function (v) { musicEnabled = v; if (!v) stopMusic(); else startMusic(); },
         ensureContext: function () { getCtx(); }
     };
 })();

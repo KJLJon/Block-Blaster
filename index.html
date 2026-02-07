@@ -6,8 +6,11 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="theme-color" content="#0f0c29">
+    <meta name="description" content="Block Blaster - Place blocks, clear lines, beat your best!">
+    <link rel="manifest" href="manifest.json">
+    <link rel="icon" href="icon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="icon.svg">
     <title>Block Blaster</title>
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧱</text></svg>">
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -21,28 +24,29 @@
                     <br>
                     <span class="title-letter" style="--i:5;color:#9b59b6">B</span><span class="title-letter" style="--i:6;color:#e74c3c">L</span><span class="title-letter" style="--i:7;color:#1abc9c">A</span><span class="title-letter" style="--i:8;color:#f39c12">S</span><span class="title-letter" style="--i:9;color:#e91e8a">T</span><span class="title-letter" style="--i:10;color:#3498db">E</span><span class="title-letter" style="--i:11;color:#2ecc71">R</span>
                 </div>
-                <div class="menu-buttons">
+                <div class="menu-grid">
                     <button class="btn btn-classic" id="btn-classic">
                         <span class="btn-icon">♾️</span>
-                        <span class="btn-label">CLASSIC</span>
-                        <span class="btn-desc">Endless high score</span>
+                        <div><span class="btn-label">CLASSIC</span><span class="btn-desc">Endless high score</span></div>
                     </button>
                     <button class="btn btn-adventure" id="btn-adventure">
                         <span class="btn-icon">🗺️</span>
-                        <span class="btn-label">ADVENTURE</span>
-                        <span class="btn-desc">30 levels to conquer</span>
+                        <div><span class="btn-label">ADVENTURE</span><span class="btn-desc">30 levels</span></div>
                     </button>
                     <button class="btn btn-blast" id="btn-blast">
                         <span class="btn-icon">⏱️</span>
-                        <span class="btn-label">BLAST</span>
-                        <span class="btn-desc">Race the clock</span>
+                        <div><span class="btn-label">BLAST</span><span class="btn-desc">Race the clock</span></div>
+                    </button>
+                    <button class="btn btn-collect" id="btn-collect">
+                        <span class="btn-icon">💎</span>
+                        <div><span class="btn-label">COLLECT</span><span class="btn-desc">Gather gems</span></div>
                     </button>
                 </div>
                 <button class="btn-icon-only" id="btn-options-open" aria-label="Options">⚙️</button>
             </div>
         </div>
 
-        <!-- ===== LEVEL SELECT (Adventure) ===== -->
+        <!-- ===== LEVEL SELECT ===== -->
         <div id="level-select" class="screen">
             <div class="screen-header">
                 <button class="btn-back" id="btn-levels-back">←</button>
@@ -65,7 +69,7 @@
                     <label class="toggle"><input type="checkbox" id="opt-sfx" checked><span class="toggle-slider"></span></label>
                 </div>
                 <div class="option-row">
-                    <span class="option-label">🎵 Background Music</span>
+                    <span class="option-label">🎵 Music</span>
                     <label class="toggle"><input type="checkbox" id="opt-music" checked><span class="toggle-slider"></span></label>
                 </div>
                 <div class="option-row">
@@ -76,13 +80,20 @@
                     <span class="option-label">✨ Flashy Effects</span>
                     <label class="toggle"><input type="checkbox" id="opt-flashy" checked><span class="toggle-slider"></span></label>
                 </div>
+                <div class="option-row option-row-col">
+                    <span class="option-label">🎯 Drag Style</span>
+                    <div class="seg-control" id="opt-movement">
+                        <button class="seg-btn active" data-val="smooth">Smooth</button>
+                        <button class="seg-btn" data-val="accelerated">Fast</button>
+                        <button class="seg-btn" data-val="precise">Precise</button>
+                    </div>
+                </div>
             </div>
-            <p class="option-note">Disable flashy effects for a calmer experience</p>
+            <p class="option-note">Disable flashy effects for a calmer experience.<br>Smooth = gliding, Fast = leads your finger, Precise = direct.</p>
         </div>
 
         <!-- ===== GAME SCREEN ===== -->
         <div id="game-screen" class="screen">
-            <!-- Top Bar -->
             <header id="header">
                 <div id="score-section">
                     <button class="btn-back btn-back-game" id="btn-game-back">←</button>
@@ -97,12 +108,12 @@
                     </div>
                     <button class="btn-pause" id="btn-pause">⏸️</button>
                 </div>
-                <!-- Adventure objective bar -->
                 <div id="objective-bar" class="hidden">
                     <span id="objective-icon">⭐</span>
                     <span id="objective-text">Clear all target blocks</span>
                     <span id="objective-progress">0/0</span>
                 </div>
+                <div id="collection-bar" class="hidden"></div>
             </header>
 
             <div id="combo-display" class="hidden">
@@ -124,7 +135,6 @@
         </div>
 
         <!-- ===== OVERLAYS ===== -->
-        <!-- Game Over -->
         <div id="game-over-overlay" class="overlay hidden">
             <div class="overlay-modal">
                 <h2>GAME OVER</h2>
@@ -138,10 +148,9 @@
             </div>
         </div>
 
-        <!-- Level Complete -->
         <div id="level-complete-overlay" class="overlay hidden">
             <div class="overlay-modal level-complete-modal">
-                <h2>LEVEL COMPLETE!</h2>
+                <h2 id="level-complete-title">LEVEL COMPLETE!</h2>
                 <div id="level-stars" class="level-stars">
                     <span class="star" id="star-1">☆</span>
                     <span class="star" id="star-2">☆</span>
@@ -156,7 +165,6 @@
             </div>
         </div>
 
-        <!-- Pause -->
         <div id="pause-overlay" class="overlay hidden">
             <div class="overlay-modal">
                 <h2>PAUSED</h2>
@@ -170,5 +178,10 @@
 
     <script src="audio.js"></script>
     <script src="game.js"></script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('./sw.js').catch(function(){});
+        }
+    </script>
 </body>
 </html>
