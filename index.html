@@ -5,52 +5,170 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="theme-color" content="#1a1a2e">
+    <meta name="theme-color" content="#0f0c29">
     <title>Block Blaster</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧱</text></svg>">
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div id="game-container">
-        <header id="header">
-            <div id="score-section">
-                <div class="score-box">
-                    <div class="score-label">SCORE</div>
-                    <div id="score" class="score-value">0</div>
+    <div id="app">
+        <!-- ===== MAIN MENU ===== -->
+        <div id="main-menu" class="screen active">
+            <div class="menu-bg-stars"></div>
+            <div class="menu-content">
+                <div id="menu-title">
+                    <span class="title-letter" style="--i:0;color:#e74c3c">B</span><span class="title-letter" style="--i:1;color:#f39c12">L</span><span class="title-letter" style="--i:2;color:#f1c40f">O</span><span class="title-letter" style="--i:3;color:#2ecc71">C</span><span class="title-letter" style="--i:4;color:#3498db">K</span>
+                    <br>
+                    <span class="title-letter" style="--i:5;color:#9b59b6">B</span><span class="title-letter" style="--i:6;color:#e74c3c">L</span><span class="title-letter" style="--i:7;color:#1abc9c">A</span><span class="title-letter" style="--i:8;color:#f39c12">S</span><span class="title-letter" style="--i:9;color:#e91e8a">T</span><span class="title-letter" style="--i:10;color:#3498db">E</span><span class="title-letter" style="--i:11;color:#2ecc71">R</span>
                 </div>
-                <div id="title">BLOCK BLASTER</div>
-                <div class="score-box">
-                    <div class="score-label">BEST</div>
-                    <div id="best-score" class="score-value">0</div>
+                <div class="menu-buttons">
+                    <button class="btn btn-classic" id="btn-classic">
+                        <span class="btn-icon">♾️</span>
+                        <span class="btn-label">CLASSIC</span>
+                        <span class="btn-desc">Endless high score</span>
+                    </button>
+                    <button class="btn btn-adventure" id="btn-adventure">
+                        <span class="btn-icon">🗺️</span>
+                        <span class="btn-label">ADVENTURE</span>
+                        <span class="btn-desc">30 levels to conquer</span>
+                    </button>
+                    <button class="btn btn-blast" id="btn-blast">
+                        <span class="btn-icon">⏱️</span>
+                        <span class="btn-label">BLAST</span>
+                        <span class="btn-desc">Race the clock</span>
+                    </button>
+                </div>
+                <button class="btn-icon-only" id="btn-options-open" aria-label="Options">⚙️</button>
+            </div>
+        </div>
+
+        <!-- ===== LEVEL SELECT (Adventure) ===== -->
+        <div id="level-select" class="screen">
+            <div class="screen-header">
+                <button class="btn-back" id="btn-levels-back">←</button>
+                <h2 class="screen-title">ADVENTURE</h2>
+                <div class="spacer"></div>
+            </div>
+            <div id="level-grid"></div>
+        </div>
+
+        <!-- ===== OPTIONS ===== -->
+        <div id="options-screen" class="screen">
+            <div class="screen-header">
+                <button class="btn-back" id="btn-options-back">←</button>
+                <h2 class="screen-title">OPTIONS</h2>
+                <div class="spacer"></div>
+            </div>
+            <div class="options-list">
+                <div class="option-row">
+                    <span class="option-label">🔊 Sound Effects</span>
+                    <label class="toggle"><input type="checkbox" id="opt-sfx" checked><span class="toggle-slider"></span></label>
+                </div>
+                <div class="option-row">
+                    <span class="option-label">🎵 Background Music</span>
+                    <label class="toggle"><input type="checkbox" id="opt-music" checked><span class="toggle-slider"></span></label>
+                </div>
+                <div class="option-row">
+                    <span class="option-label">📳 Vibration</span>
+                    <label class="toggle"><input type="checkbox" id="opt-vibration" checked><span class="toggle-slider"></span></label>
+                </div>
+                <div class="option-row">
+                    <span class="option-label">✨ Flashy Effects</span>
+                    <label class="toggle"><input type="checkbox" id="opt-flashy" checked><span class="toggle-slider"></span></label>
                 </div>
             </div>
-        </header>
-
-        <div id="combo-display" class="hidden">
-            <span id="combo-text"></span>
+            <p class="option-note">Disable flashy effects for a calmer experience</p>
         </div>
 
-        <div id="board-wrapper">
-            <div id="board"></div>
-            <div id="ghost-layer"></div>
+        <!-- ===== GAME SCREEN ===== -->
+        <div id="game-screen" class="screen">
+            <!-- Top Bar -->
+            <header id="header">
+                <div id="score-section">
+                    <button class="btn-back btn-back-game" id="btn-game-back">←</button>
+                    <div class="score-box">
+                        <div class="score-label" id="left-label">SCORE</div>
+                        <div id="score" class="score-value">0</div>
+                    </div>
+                    <div id="mode-badge"></div>
+                    <div class="score-box">
+                        <div class="score-label" id="right-label">BEST</div>
+                        <div id="right-value" class="score-value">0</div>
+                    </div>
+                    <button class="btn-pause" id="btn-pause">⏸️</button>
+                </div>
+                <!-- Adventure objective bar -->
+                <div id="objective-bar" class="hidden">
+                    <span id="objective-icon">⭐</span>
+                    <span id="objective-text">Clear all target blocks</span>
+                    <span id="objective-progress">0/0</span>
+                </div>
+            </header>
+
+            <div id="combo-display" class="hidden">
+                <span id="combo-text"></span>
+            </div>
+
+            <div id="board-wrapper">
+                <div id="board"></div>
+                <div id="ghost-layer"></div>
+                <div id="highlight-layer"></div>
+                <div id="particle-container"></div>
+            </div>
+
+            <div id="pieces-tray">
+                <div class="piece-slot" id="slot-0"></div>
+                <div class="piece-slot" id="slot-1"></div>
+                <div class="piece-slot" id="slot-2"></div>
+            </div>
         </div>
 
-        <div id="pieces-tray">
-            <div class="piece-slot" id="slot-0"></div>
-            <div class="piece-slot" id="slot-1"></div>
-            <div class="piece-slot" id="slot-2"></div>
-        </div>
-
-        <div id="game-over-overlay" class="hidden">
-            <div id="game-over-modal">
+        <!-- ===== OVERLAYS ===== -->
+        <!-- Game Over -->
+        <div id="game-over-overlay" class="overlay hidden">
+            <div class="overlay-modal">
                 <h2>GAME OVER</h2>
-                <div id="final-score-label">SCORE</div>
-                <div id="final-score">0</div>
-                <div id="new-best" class="hidden">NEW BEST!</div>
-                <button id="play-again-btn">PLAY AGAIN</button>
+                <div class="final-score-label">SCORE</div>
+                <div id="final-score" class="final-score">0</div>
+                <div id="new-best" class="new-best hidden">⭐ NEW BEST! ⭐</div>
+                <div class="overlay-buttons">
+                    <button class="btn btn-play-again" id="btn-play-again">PLAY AGAIN</button>
+                    <button class="btn btn-menu" id="btn-gameover-menu">MENU</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Level Complete -->
+        <div id="level-complete-overlay" class="overlay hidden">
+            <div class="overlay-modal level-complete-modal">
+                <h2>LEVEL COMPLETE!</h2>
+                <div id="level-stars" class="level-stars">
+                    <span class="star" id="star-1">☆</span>
+                    <span class="star" id="star-2">☆</span>
+                    <span class="star" id="star-3">☆</span>
+                </div>
+                <div class="final-score-label">SCORE</div>
+                <div id="level-score" class="final-score">0</div>
+                <div class="overlay-buttons">
+                    <button class="btn btn-next-level" id="btn-next-level">NEXT LEVEL</button>
+                    <button class="btn btn-menu" id="btn-levelcomplete-menu">MENU</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Pause -->
+        <div id="pause-overlay" class="overlay hidden">
+            <div class="overlay-modal">
+                <h2>PAUSED</h2>
+                <div class="overlay-buttons">
+                    <button class="btn btn-play-again" id="btn-resume">RESUME</button>
+                    <button class="btn btn-menu" id="btn-pause-menu">MENU</button>
+                </div>
             </div>
         </div>
     </div>
 
+    <script src="audio.js"></script>
     <script src="game.js"></script>
 </body>
 </html>
